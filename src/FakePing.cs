@@ -27,7 +27,7 @@ public class FakePing : BasePlugin
         RegisterEventHandler<EventPlayerConnectFull>(OnPlayerConnectFull);
         RegisterEventHandler<EventPlayerDisconnect>(OnPlayerDisconnect);
 
-        // Обновляем пинг каждые 3 секунды (чаще, чтобы было заметно)
+        // Обновляем пинг каждые 3 секунды для всех игроков с фейком
         _updateTimer = AddTimer(3.0f, UpdateAllPings, TimerFlags.REPEAT);
     }
 
@@ -73,14 +73,14 @@ public class FakePing : BasePlugin
         if (_fakePing.ContainsKey(target))
             _fakePing.Remove(target);
 
-        // Сбрасываем на реальное значение (0 — сервер сам подставит актуальный)
+        // Сбрасываем пинг (0 означает, что сервер будет показывать реальный)
         target.Ping = 0;
         commandInfo.ReplyToCommand($" {ChatColors.Green} Fake ping removed for {target.PlayerName}");
     }
 
     private CCSPlayerController? FindPlayer(string input)
     {
-        // Поддержка #userid
+        // Поиск по #userid
         if (input.StartsWith("#") && int.TryParse(input.Substring(1), out int userId))
         {
             var player = Utilities.GetPlayerFromUserid(userId);
@@ -89,14 +89,15 @@ public class FakePing : BasePlugin
         }
 
         var players = Utilities.GetPlayers();
-        // Точное совпадение по имени
+
+        // Точное совпадение имени
         foreach (var p in players)
         {
             if (p != null && p.IsValid && !p.IsBot && p.PlayerName.Equals(input, StringComparison.OrdinalIgnoreCase))
                 return p;
         }
 
-        // Частичное совпадение (первый найденный)
+        // Частичное совпадение (первый подходящий)
         foreach (var p in players)
         {
             if (p != null && p.IsValid && !p.IsBot && p.PlayerName.Contains(input, StringComparison.OrdinalIgnoreCase))
@@ -112,36 +113,13 @@ public class FakePing : BasePlugin
 
         if (_fakePing.TryGetValue(player, out int fakePing))
         {
-            // Устанавливаем пинг через свойство
+            // Устанавливаем фейковый пинг
             player.Ping = (uint)fakePing;
 
-            // **ВАЖНО:** Принудительно обновляем сетевую переменную через схему.
-            // Это работает в CS2 без дополнительных методов.
-            // Используем низкоуровневый доступ к полю m_iPing через схему.
-            // В версии 1.0.25 свойство Ping уже должно обновлять сеть, но если нет,
-            // то можно попробовать следующий трюк:
-            // Перезаписываем значение через схему (если доступно)
-            var schema = player.Schema;
-            if (schema != null)
+            // Дополнительно запускаем микрозадержку для принудительного обновления
+            // (иногда клиент не сразу обновляет таблицу)
+            AddTimer(0.1f, () =>
             {
-                // Прямое обращение к полю m_iPing (если оно есть в схеме)
-                // В некоторых версиях поле называется "m_iPing" или "m_nPing"
-                // Попробуем установить через свойство Schema
-                // Это не гарантирует работу, но оставляем как запасной вариант
-            }
-
-            // Дополнительно можно вызвать изменение через сетевые проперти,
-            // но в текущей версии API для этого нет готовых методов.
-            // Однако, как показывает практика, простое присвоение player.Ping работает,
-            // если сервер пересчитывает пинг, но чтобы изменения отобразились сразу,
-            // нужно вызвать обновление состояния. 
-            // Поскольку SetStateChanged недоступен, используем метод "костыль":
-            // меняем другое свойство и возвращаем обратно, чтобы вызвать обновление.
-            // Например, меняем SteamID на секунду? Нет, это плохая идея.
-            // Вместо этого просто устанавливаем Ping несколько раз подряд.
-            // Это некрасиво, но работает.
-            // Запускаем таймер на 0.1 секунды, чтобы повторно установить тот же пинг.
-            AddTimer(0.1f, () => {
                 if (player.IsValid && _fakePing.TryGetValue(player, out int p))
                 {
                     player.Ping = (uint)p;
