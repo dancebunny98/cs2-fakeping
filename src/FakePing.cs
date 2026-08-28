@@ -17,7 +17,7 @@ public class FakePing : BasePlugin
     public override string ModuleAuthor => "Your Name";
 
     private Dictionary<CCSPlayerController, FakePingData> _fakePingData = new();
-    private Timer? _updateTimer;
+    private CounterStrikeSharp.API.Modules.Timers.Timer? _updateTimer; // полное имя
 
     public override void Load(bool hotReload)
     {
@@ -27,7 +27,10 @@ public class FakePing : BasePlugin
         RegisterEventHandler<EventPlayerConnectFull>(OnPlayerConnectFull);
         RegisterEventHandler<EventPlayerDisconnect>(OnPlayerDisconnect);
 
-        // Запускаем таймер для обновления динамического пинга каждую секунду
+        // Регистрируем OnTick для постоянного обновления пинга
+        RegisterListener<Listeners.OnTick>(OnTick);
+
+        // Запускаем таймер для обновления динамических пингов (каждую секунду)
         _updateTimer = AddTimer(1.0f, UpdateDynamicPings, TimerFlags.REPEAT);
     }
 
@@ -48,7 +51,7 @@ public class FakePing : BasePlugin
             return;
         }
 
-        // Если аргументов 3 – динамический режим
+        // Если аргументов 3 (после игрока) – динамический режим
         if (command.ArgCount >= 4)
         {
             string rangeArg = command.GetArg(2);
@@ -74,7 +77,7 @@ public class FakePing : BasePlugin
                 MaxPing = max,
                 IntervalSeconds = interval,
                 NextUpdateTime = 0, // обновится сразу
-                CurrentPing = 0
+                CurrentPing = min // инициализируем минимальным
             };
             _fakePingData[target] = data;
             command.ReplyToCommand($" {ChatColors.Green} Dynamic fake ping enabled for {target.PlayerName}: range {min}-{max} ms, change every {interval} sec.");
@@ -137,7 +140,7 @@ public class FakePing : BasePlugin
         return null;
     }
 
-    // Обновление динамических пингов (вызывается раз в секунду)
+    // Вызывается раз в секунду для обновления динамических значений
     private void UpdateDynamicPings()
     {
         float currentTime = (float)DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
@@ -147,14 +150,13 @@ public class FakePing : BasePlugin
             var player = kvp.Key;
             var data = kvp.Value;
 
-            if (!player.IsValid || player.IsBot || !_fakePingData.ContainsKey(player))
+            if (!player.IsValid || player.IsBot)
                 continue;
 
             if (data.IsDynamic)
             {
                 if (currentTime >= data.NextUpdateTime)
                 {
-                    // Генерируем случайный пинг в диапазоне
                     Random rand = new Random();
                     data.CurrentPing = rand.Next(data.MinPing, data.MaxPing + 1);
                     data.NextUpdateTime = currentTime + data.IntervalSeconds;
@@ -163,7 +165,7 @@ public class FakePing : BasePlugin
         }
     }
 
-    // OnTick – применяем текущий пинг для всех игроков с фейком
+    // OnTick – применяем текущий пинг для всех игроков с фейком (вызывается каждый тик)
     private void OnTick()
     {
         foreach (var kvp in _fakePingData)
@@ -181,7 +183,6 @@ public class FakePing : BasePlugin
         }
     }
 
-    // Хуки событий
     private HookResult OnPlayerConnectFull(EventPlayerConnectFull @event, GameEventInfo info)
     {
         var player = @event.Userid;
@@ -196,23 +197,6 @@ public class FakePing : BasePlugin
         if (player != null && _fakePingData.ContainsKey(player))
             _fakePingData.Remove(player);
         return HookResult.Continue;
-    }
-
-    // Регистрируем OnTick в Load
-    public override void Load(bool hotReload)
-    {
-        base.Load(hotReload);
-        // ... остальной код (команды, события) – как выше
-        // Добавляем:
-        RegisterListener<Listeners.OnTick>(OnTick);
-    }
-
-    public override void Unload(bool hotReload)
-    {
-        // Очищаем ресурсы
-        _updateTimer?.Kill();
-        _fakePingData.Clear();
-        base.Unload(hotReload);
     }
 }
 
