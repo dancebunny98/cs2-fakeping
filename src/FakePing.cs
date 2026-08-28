@@ -6,6 +6,7 @@ using CounterStrikeSharp.API.Modules.Admin;
 using CounterStrikeSharp.API.Modules.Commands;
 using CounterStrikeSharp.API.Modules.Utils;
 using CounterStrikeSharp.API.Modules.Timers;
+using CounterStrikeSharp.API.Schema; // Важно!
 
 namespace FakePing;
 
@@ -27,8 +28,7 @@ public class FakePing : BasePlugin
         RegisterEventHandler<EventPlayerConnectFull>(OnPlayerConnectFull);
         RegisterEventHandler<EventPlayerDisconnect>(OnPlayerDisconnect);
 
-        // Обновляем каждую секунду для надежности
-        _updateTimer = AddTimer(1.0f, UpdateAllPings, TimerFlags.REPEAT);
+        _updateTimer = AddTimer(3.0f, UpdateAllPings, TimerFlags.REPEAT);
     }
 
     public override void Unload(bool hotReload)
@@ -106,21 +106,16 @@ public class FakePing : BasePlugin
     {
         if (player == null || !player.IsValid || player.IsBot) return;
 
-        var schema = player.As<PlayerSchema>();
-        if (schema == null) return;
-
+        // Прямой доступ к сетевой переменной m_iPing через Schema
         if (_fakePing.TryGetValue(player, out int fakePing))
         {
-            // Устанавливаем оба возможных поля
-            schema.m_iPing = (uint)fakePing;
-            // Некоторые версии используют m_nPing
-            schema.m_nPing = fakePing;
+            // Устанавливаем фейковый пинг
+            Schema.GetRef<uint>(player.Handle, "CCSPlayerController", "m_iPing") = (uint)fakePing;
         }
         else
         {
-            // Если фейк отключен, ставим 0, чтобы сервер сам вычислял
-            schema.m_iPing = 0;
-            schema.m_nPing = 0;
+            // Сбрасываем на 0 (или можно оставить без изменений)
+            Schema.GetRef<uint>(player.Handle, "CCSPlayerController", "m_iPing") = 0;
         }
     }
 
@@ -148,13 +143,4 @@ public class FakePing : BasePlugin
             _fakePing.Remove(player);
         return HookResult.Continue;
     }
-}
-
-public class PlayerSchema : BaseSchema
-{
-    [SchemaMember("CCSPlayerController", "m_iPing")]
-    public ref uint m_iPing => ref Schema.GetRef<uint>(this.Handle, "CCSPlayerController", "m_iPing");
-
-    [SchemaMember("CCSPlayerController", "m_nPing")]
-    public ref int m_nPing => ref Schema.GetRef<int>(this.Handle, "CCSPlayerController", "m_nPing");
 }
