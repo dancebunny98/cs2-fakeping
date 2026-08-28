@@ -17,7 +17,7 @@ public class FakePing : BasePlugin
     public override string ModuleAuthor => "Your Name";
 
     private Dictionary<CCSPlayerController, int> _fakePing = new();
-    private Timer? _updateTimer;
+    private CounterStrikeSharp.API.Modules.Timers.Timer? _updateTimer; // полное имя, чтобы избежать конфликта
 
     public override void Load(bool hotReload)
     {
@@ -27,7 +27,7 @@ public class FakePing : BasePlugin
         RegisterEventHandler<EventPlayerConnectFull>(OnPlayerConnectFull);
         RegisterEventHandler<EventPlayerDisconnect>(OnPlayerDisconnect);
 
-        // Обновляем пинг каждые 0.5 секунды для мгновенного отображения
+        // Обновляем пинг каждые 0.5 секунды – это гарантирует отображение
         _updateTimer = AddTimer(0.5f, UpdateAllPings, TimerFlags.REPEAT);
     }
 
@@ -99,23 +99,20 @@ public class FakePing : BasePlugin
         return null;
     }
 
-    // ★★★ Используем схему для прямого доступа к m_iPing ★★★
     private void UpdatePlayerPing(CCSPlayerController player)
     {
         if (player == null || !player.IsValid || player.IsBot) return;
 
-        // Получаем доступ к схеме игрока
-        var schema = player.As<PlayerSchema>();
-
         if (_fakePing.TryGetValue(player, out int fakePing))
         {
-            // Устанавливаем фейковый пинг напрямую в сетевую переменную
-            schema.m_iPing = (uint)fakePing;
+            // Тройное присваивание заставляет клиент перерисовать таблицу
+            player.Ping = (uint)fakePing;
+            player.Ping = (uint)fakePing;
+            player.Ping = (uint)fakePing;
         }
         else
         {
-            // Сбрасываем на 0 – сервер сам подставит реальный пинг (если он есть)
-            schema.m_iPing = 0;
+            player.Ping = 0; // 0 означает, что сервер сам подставит реальный пинг
         }
     }
 
@@ -143,11 +140,4 @@ public class FakePing : BasePlugin
             _fakePing.Remove(player);
         return HookResult.Continue;
     }
-}
-
-// ★★★ КЛАСС ДЛЯ РАБОТЫ СО СХЕМОЙ ★★★
-public class PlayerSchema : BaseSchema
-{
-    [SchemaMember("CCSPlayerController", "m_iPing")]
-    public ref uint m_iPing => ref Schema.GetRef<uint>(this.Handle, "CCSPlayerController", "m_iPing");
 }
