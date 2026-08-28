@@ -6,6 +6,7 @@ using CounterStrikeSharp.API.Modules.Admin;
 using CounterStrikeSharp.API.Modules.Commands;
 using CounterStrikeSharp.API.Modules.Utils;
 using CounterStrikeSharp.API.Modules.Timers;
+using CounterStrikeSharp.API.Modules.Entities;
 
 namespace FakePing;
 
@@ -17,15 +18,19 @@ public class FakePing : BasePlugin
     public override string ModuleAuthor => "Your Name";
 
     private Dictionary<CCSPlayerController, int> _fakePing = new();
-    private Timer? _updateTimer;
+    private CounterStrikeSharp.API.Modules.Timers.Timer? _updateTimer;
 
     public override void Load(bool hotReload)
     {
-        // Регистрация команд
-        AddCommand("css_fakeping", "Set fake ping for a player. Usage: !fakeping <#userid or name> <ping>", OnFakePingCommand, CommandUsage.CLIENT_AND_SERVER);
-        AddCommand("css_fakeping_remove", "Remove fake ping from a player. Usage: !fakeping_remove <#userid or name>", OnFakePingRemoveCommand, CommandUsage.CLIENT_AND_SERVER);
+        // Регистрация команд (без параметра 'who')
+        AddCommand("css_fakeping", "Set fake ping for a player. Usage: !fakeping <#userid or name> <ping>", OnFakePingCommand);
+        AddCommand("css_fakeping_remove", "Remove fake ping from a player. Usage: !fakeping_remove <#userid or name>", OnFakePingRemoveCommand);
 
-        // Запускаем таймер для обновления пинга каждые 5 секунд
+        // Хуки событий вместо переопределения OnPlayerConnect/Disconnect
+        RegisterEventHandler<EventPlayerConnectFull>(OnPlayerConnectFull);
+        RegisterEventHandler<EventPlayerDisconnect>(OnPlayerDisconnect);
+
+        // Таймер обновления пинга каждые 5 секунд
         _updateTimer = AddTimer(5.0f, UpdateAllPings, TimerFlags.REPEAT);
     }
 
@@ -35,8 +40,8 @@ public class FakePing : BasePlugin
         _fakePing.Clear();
     }
 
-    [RequiresPermissions("@css/root")] // Можно заменить на @css/slay
-    [CommandHelper(minArgs: 2, usage: "<#userid or name> <ping>", who: CommandUsage.CLIENT_AND_SERVER)]
+    [RequiresPermissions("@css/root")]
+    [CommandHelper(minArgs: 2, usage: "<#userid or name> <ping>")]
     private void OnFakePingCommand(CCSPlayerController? caller, CommandInfo commandInfo)
     {
         string targetName = commandInfo.GetArg(1);
@@ -69,7 +74,7 @@ public class FakePing : BasePlugin
     }
 
     [RequiresPermissions("@css/root")]
-    [CommandHelper(minArgs: 1, usage: "<#userid or name>", who: CommandUsage.CLIENT_AND_SERVER)]
+    [CommandHelper(minArgs: 1, usage: "<#userid or name>")]
     private void OnFakePingRemoveCommand(CCSPlayerController? caller, CommandInfo commandInfo)
     {
         string targetName = commandInfo.GetArg(1);
@@ -92,7 +97,7 @@ public class FakePing : BasePlugin
         if (_fakePing.ContainsKey(target))
             _fakePing.Remove(target);
 
-        // Сбрасываем пинг, установив его в 0 (или можно оставить реальный)
+        // Сбрасываем пинг
         target.Ping = 0;
         commandInfo.ReplyToCommand($" {ChatColors.Green} Fake ping removed for {target.PlayerName}");
     }
@@ -105,7 +110,6 @@ public class FakePing : BasePlugin
         {
             player.Ping = (uint)fakePing;
         }
-        // Если нет записи, ничего не делаем, чтобы не сбивать реальный пинг
     }
 
     private void UpdateAllPings()
@@ -119,15 +123,21 @@ public class FakePing : BasePlugin
         }
     }
 
-    public override void OnPlayerConnect(CCSPlayerController player)
+    // Обработчик события подключения игрока
+    private HookResult OnPlayerConnectFull(EventPlayerConnectFull @event, GameEventInfo info)
     {
+        var player = @event.Userid;
         if (player != null && _fakePing.ContainsKey(player))
             _fakePing.Remove(player);
+        return HookResult.Continue;
     }
 
-    public override void OnPlayerDisconnect(CCSPlayerController player)
+    // Обработчик события отключения игрока
+    private HookResult OnPlayerDisconnect(EventPlayerDisconnect @event, GameEventInfo info)
     {
+        var player = @event.Userid;
         if (player != null && _fakePing.ContainsKey(player))
             _fakePing.Remove(player);
+        return HookResult.Continue;
     }
 }
