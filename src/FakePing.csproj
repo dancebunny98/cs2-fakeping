@@ -6,7 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Фиксируем версию 1.0.0, которая точно поддерживает net8.0 -->
-    <PackageReference Include="CounterStrikeSharp.API" Version="1.0.0" />
+    <!-- Явно указываем версию, совместимую с net8.0 -->
+    <PackageReference Include="CounterStrikeSharp.API" Version="1.0.25" />
   </ItemGroup>
 </Project>
