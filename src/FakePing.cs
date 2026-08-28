@@ -6,7 +6,6 @@ using CounterStrikeSharp.API.Modules.Admin;
 using CounterStrikeSharp.API.Modules.Commands;
 using CounterStrikeSharp.API.Modules.Utils;
 using CounterStrikeSharp.API.Modules.Timers;
-using CounterStrikeSharp.API.Schema; // Важно!
 
 namespace FakePing;
 
@@ -18,17 +17,18 @@ public class FakePing : BasePlugin
     public override string ModuleAuthor => "Your Name";
 
     private Dictionary<CCSPlayerController, int> _fakePing = new();
-    private CounterStrikeSharp.API.Modules.Timers.Timer? _updateTimer;
+    private Timer? _updateTimer;
 
     public override void Load(bool hotReload)
     {
-        AddCommand("css_fakeping", "Set fake ping for a player. Usage: !fakeping <#userid or name> <ping>", OnFakePingCommand);
-        AddCommand("css_fakeping_remove", "Remove fake ping from a player. Usage: !fakeping_remove <#userid or name>", OnFakePingRemoveCommand);
+        AddCommand("css_fakeping", "Set fake ping. Usage: !fakeping <player> <ping>", OnFakePingCommand);
+        AddCommand("css_fakeping_remove", "Remove fake ping. Usage: !fakeping_remove <player>", OnFakePingRemoveCommand);
 
         RegisterEventHandler<EventPlayerConnectFull>(OnPlayerConnectFull);
         RegisterEventHandler<EventPlayerDisconnect>(OnPlayerDisconnect);
 
-        _updateTimer = AddTimer(3.0f, UpdateAllPings, TimerFlags.REPEAT);
+        // Обновляем пинг каждые 0.5 секунды для мгновенного отображения
+        _updateTimer = AddTimer(0.5f, UpdateAllPings, TimerFlags.REPEAT);
     }
 
     public override void Unload(bool hotReload)
@@ -38,35 +38,35 @@ public class FakePing : BasePlugin
     }
 
     [RequiresPermissions("@css/root")]
-    [CommandHelper(minArgs: 2, usage: "<#userid or name> <ping>")]
-    private void OnFakePingCommand(CCSPlayerController? caller, CommandInfo commandInfo)
+    [CommandHelper(minArgs: 2, usage: "<player> <ping>")]
+    private void OnFakePingCommand(CCSPlayerController? caller, CommandInfo command)
     {
-        var target = FindPlayer(commandInfo.GetArg(1));
+        var target = FindPlayer(command.GetArg(1));
         if (target == null)
         {
-            commandInfo.ReplyToCommand($" {ChatColors.Red} Player not found.");
+            command.ReplyToCommand($" {ChatColors.Red} Player not found.");
             return;
         }
 
-        if (!int.TryParse(commandInfo.GetArg(2), out int ping) || ping < 0 || ping > 4095)
+        if (!int.TryParse(command.GetArg(2), out int ping) || ping < 0 || ping > 4095)
         {
-            commandInfo.ReplyToCommand($" {ChatColors.Red} Invalid ping (0-4095).");
+            command.ReplyToCommand($" {ChatColors.Red} Ping must be 0-4095.");
             return;
         }
 
         _fakePing[target] = ping;
         UpdatePlayerPing(target);
-        commandInfo.ReplyToCommand($" {ChatColors.Green} Fake ping set to {ping} ms for {target.PlayerName}");
+        command.ReplyToCommand($" {ChatColors.Green} Fake ping set to {ping} ms for {target.PlayerName}");
     }
 
     [RequiresPermissions("@css/root")]
-    [CommandHelper(minArgs: 1, usage: "<#userid or name>")]
-    private void OnFakePingRemoveCommand(CCSPlayerController? caller, CommandInfo commandInfo)
+    [CommandHelper(minArgs: 1, usage: "<player>")]
+    private void OnFakePingRemoveCommand(CCSPlayerController? caller, CommandInfo command)
     {
-        var target = FindPlayer(commandInfo.GetArg(1));
+        var target = FindPlayer(command.GetArg(1));
         if (target == null)
         {
-            commandInfo.ReplyToCommand($" {ChatColors.Red} Player not found.");
+            command.ReplyToCommand($" {ChatColors.Red} Player not found.");
             return;
         }
 
@@ -74,7 +74,7 @@ public class FakePing : BasePlugin
             _fakePing.Remove(target);
 
         UpdatePlayerPing(target);
-        commandInfo.ReplyToCommand($" {ChatColors.Green} Fake ping removed for {target.PlayerName}");
+        command.ReplyToCommand($" {ChatColors.Green} Fake ping removed for {target.PlayerName}");
     }
 
     private CCSPlayerController? FindPlayer(string input)
@@ -87,35 +87,35 @@ public class FakePing : BasePlugin
         }
 
         var players = Utilities.GetPlayers();
-        foreach (var p in players)
-        {
-            if (p != null && p.IsValid && !p.IsBot && p.PlayerName.Equals(input, StringComparison.OrdinalIgnoreCase))
-                return p;
-        }
 
         foreach (var p in players)
-        {
+            if (p != null && p.IsValid && !p.IsBot && p.PlayerName.Equals(input, StringComparison.OrdinalIgnoreCase))
+                return p;
+
+        foreach (var p in players)
             if (p != null && p.IsValid && !p.IsBot && p.PlayerName.Contains(input, StringComparison.OrdinalIgnoreCase))
                 return p;
-        }
 
         return null;
     }
 
+    // ★★★ Используем схему для прямого доступа к m_iPing ★★★
     private void UpdatePlayerPing(CCSPlayerController player)
     {
         if (player == null || !player.IsValid || player.IsBot) return;
 
-        // Прямой доступ к сетевой переменной m_iPing через Schema
+        // Получаем доступ к схеме игрока
+        var schema = player.As<PlayerSchema>();
+
         if (_fakePing.TryGetValue(player, out int fakePing))
         {
-            // Устанавливаем фейковый пинг
-            Schema.GetRef<uint>(player.Handle, "CCSPlayerController", "m_iPing") = (uint)fakePing;
+            // Устанавливаем фейковый пинг напрямую в сетевую переменную
+            schema.m_iPing = (uint)fakePing;
         }
         else
         {
-            // Сбрасываем на 0 (или можно оставить без изменений)
-            Schema.GetRef<uint>(player.Handle, "CCSPlayerController", "m_iPing") = 0;
+            // Сбрасываем на 0 – сервер сам подставит реальный пинг (если он есть)
+            schema.m_iPing = 0;
         }
     }
 
@@ -143,4 +143,11 @@ public class FakePing : BasePlugin
             _fakePing.Remove(player);
         return HookResult.Continue;
     }
+}
+
+// ★★★ КЛАСС ДЛЯ РАБОТЫ СО СХЕМОЙ ★★★
+public class PlayerSchema : BaseSchema
+{
+    [SchemaMember("CCSPlayerController", "m_iPing")]
+    public ref uint m_iPing => ref Schema.GetRef<uint>(this.Handle, "CCSPlayerController", "m_iPing");
 }
