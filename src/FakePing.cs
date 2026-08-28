@@ -5,7 +5,6 @@ using CounterStrikeSharp.API.Core.Attributes.Registration;
 using CounterStrikeSharp.API.Modules.Admin;
 using CounterStrikeSharp.API.Modules.Commands;
 using CounterStrikeSharp.API.Modules.Utils;
-using CounterStrikeSharp.API.Modules.Timers;
 
 namespace FakePing;
 
@@ -17,7 +16,6 @@ public class FakePing : BasePlugin
     public override string ModuleAuthor => "Your Name";
 
     private Dictionary<CCSPlayerController, int> _fakePing = new();
-    private CounterStrikeSharp.API.Modules.Timers.Timer? _updateTimer;
 
     public override void Load(bool hotReload)
     {
@@ -27,14 +25,25 @@ public class FakePing : BasePlugin
         RegisterEventHandler<EventPlayerConnectFull>(OnPlayerConnectFull);
         RegisterEventHandler<EventPlayerDisconnect>(OnPlayerDisconnect);
 
-        // Обновляем каждые 0.5 сек, чтобы перекрыть перезапись от движка
-        _updateTimer = AddTimer(0.5f, UpdateAllPings, TimerFlags.REPEAT);
+        // ★★★ ОСНОВНОЕ ИЗМЕНЕНИЕ: обновляем пинг каждый тик ★★★
+        RegisterListener<Listeners.OnTick>(OnTick);
     }
 
     public override void Unload(bool hotReload)
     {
-        _updateTimer?.Kill();
         _fakePing.Clear();
+    }
+
+    private void OnTick()
+    {
+        // Обновляем пинг для всех игроков каждый тик
+        foreach (var player in Utilities.GetPlayers())
+        {
+            if (player != null && player.IsValid && !player.IsBot)
+            {
+                UpdatePlayerPing(player);
+            }
+        }
     }
 
     [RequiresPermissions("@css/root")]
@@ -55,7 +64,6 @@ public class FakePing : BasePlugin
         }
 
         _fakePing[target] = ping;
-        UpdatePlayerPing(target);
         command.ReplyToCommand($" {ChatColors.Green} Fake ping set to {ping} ms for {target.PlayerName}");
     }
 
@@ -73,7 +81,6 @@ public class FakePing : BasePlugin
         if (_fakePing.ContainsKey(target))
             _fakePing.Remove(target);
 
-        UpdatePlayerPing(target);
         command.ReplyToCommand($" {ChatColors.Green} Fake ping removed for {target.PlayerName}");
     }
 
@@ -99,33 +106,17 @@ public class FakePing : BasePlugin
         return null;
     }
 
-    // ★★★ ГЛАВНОЕ: используем схему для прямого доступа к m_iPing ★★★
     private void UpdatePlayerPing(CCSPlayerController player)
     {
         if (player == null || !player.IsValid || player.IsBot) return;
 
-        // Получаем схему игрока через As<PlayerSchema>
-        var schema = player.As<PlayerSchema>();
-
         if (_fakePing.TryGetValue(player, out int fakePing))
         {
-            // Устанавливаем фейк-пинг напрямую в сетевую переменную
-            schema.m_iPing = (uint)fakePing;
+            // Множественная запись для надёжности
+            player.Ping = (uint)fakePing;
+            player.Ping = (uint)fakePing;
         }
-        else
-        {
-            // Сбрасываем на 0 – сервер сам подставит реальное значение
-            schema.m_iPing = 0;
-        }
-    }
-
-    private void UpdateAllPings()
-    {
-        foreach (var player in Utilities.GetPlayers())
-        {
-            if (player != null && player.IsValid && !player.IsBot)
-                UpdatePlayerPing(player);
-        }
+        // Если фейк отключен – ничего не делаем, оставляем реальный пинг
     }
 
     private HookResult OnPlayerConnectFull(EventPlayerConnectFull @event, GameEventInfo info)
@@ -143,11 +134,4 @@ public class FakePing : BasePlugin
             _fakePing.Remove(player);
         return HookResult.Continue;
     }
-}
-
-// ★★★ КЛАСС ДЛЯ ДОСТУПА К СХЕМЕ ★★★
-public class PlayerSchema : BaseSchema
-{
-    [SchemaMember("CCSPlayerController", "m_iPing")]
-    public ref uint m_iPing => ref Schema.GetRef<uint>(this.Handle, "CCSPlayerController", "m_iPing");
 }
