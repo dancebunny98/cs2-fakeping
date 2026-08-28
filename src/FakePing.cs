@@ -16,22 +16,19 @@ public class FakePing : BasePlugin
     public override string ModuleVersion => "1.0.0";
     public override string ModuleAuthor => "Your Name";
 
-    // Словарь для хранения фейкового пинга каждого игрока
     private Dictionary<CCSPlayerController, int> _fakePing = new();
     private CounterStrikeSharp.API.Modules.Timers.Timer? _updateTimer;
 
     public override void Load(bool hotReload)
     {
-        // Регистрируем команды
         AddCommand("css_fakeping", "Set fake ping for a player. Usage: !fakeping <#userid or name> <ping>", OnFakePingCommand);
         AddCommand("css_fakeping_remove", "Remove fake ping from a player. Usage: !fakeping_remove <#userid or name>", OnFakePingRemoveCommand);
 
-        // Регистрируем события для очистки данных
         RegisterEventHandler<EventPlayerConnectFull>(OnPlayerConnectFull);
         RegisterEventHandler<EventPlayerDisconnect>(OnPlayerDisconnect);
 
-        // Запускаем таймер для периодического обновления пинга (каждые 3 секунды)
-        _updateTimer = AddTimer(3.0f, UpdateAllPings, TimerFlags.REPEAT);
+        // Обновляем каждую секунду для надежности
+        _updateTimer = AddTimer(1.0f, UpdateAllPings, TimerFlags.REPEAT);
     }
 
     public override void Unload(bool hotReload)
@@ -76,14 +73,12 @@ public class FakePing : BasePlugin
         if (_fakePing.ContainsKey(target))
             _fakePing.Remove(target);
 
-        // Сбрасываем пинг, устанавливая его в 0
         UpdatePlayerPing(target);
         commandInfo.ReplyToCommand($" {ChatColors.Green} Fake ping removed for {target.PlayerName}");
     }
 
     private CCSPlayerController? FindPlayer(string input)
     {
-        // Поиск по #userid
         if (input.StartsWith("#") && int.TryParse(input.Substring(1), out int userId))
         {
             var player = Utilities.GetPlayerFromUserid(userId);
@@ -92,15 +87,12 @@ public class FakePing : BasePlugin
         }
 
         var players = Utilities.GetPlayers();
-
-        // Точное совпадение по имени
         foreach (var p in players)
         {
             if (p != null && p.IsValid && !p.IsBot && p.PlayerName.Equals(input, StringComparison.OrdinalIgnoreCase))
                 return p;
         }
 
-        // Частичное совпадение (первый подходящий)
         foreach (var p in players)
         {
             if (p != null && p.IsValid && !p.IsBot && p.PlayerName.Contains(input, StringComparison.OrdinalIgnoreCase))
@@ -110,23 +102,25 @@ public class FakePing : BasePlugin
         return null;
     }
 
-    // ★★★ ГЛАВНОЕ ИЗМЕНЕНИЕ: используем SchemaMember для прямого доступа к m_iPing ★★★
     private void UpdatePlayerPing(CCSPlayerController player)
     {
         if (player == null || !player.IsValid || player.IsBot) return;
 
-        // Получаем доступ к схеме игрока
         var schema = player.As<PlayerSchema>();
+        if (schema == null) return;
 
         if (_fakePing.TryGetValue(player, out int fakePing))
         {
-            // Устанавливаем фейковый пинг напрямую в сетевую переменную
+            // Устанавливаем оба возможных поля
             schema.m_iPing = (uint)fakePing;
+            // Некоторые версии используют m_nPing
+            schema.m_nPing = fakePing;
         }
         else
         {
-            // Если фейк-пинг отключен, ставим 0, чтобы сервер показывал реальное значение
+            // Если фейк отключен, ставим 0, чтобы сервер сам вычислял
             schema.m_iPing = 0;
+            schema.m_nPing = 0;
         }
     }
 
@@ -139,7 +133,6 @@ public class FakePing : BasePlugin
         }
     }
 
-    // Обработчик события подключения игрока
     private HookResult OnPlayerConnectFull(EventPlayerConnectFull @event, GameEventInfo info)
     {
         var player = @event.Userid;
@@ -148,7 +141,6 @@ public class FakePing : BasePlugin
         return HookResult.Continue;
     }
 
-    // Обработчик события отключения игрока
     private HookResult OnPlayerDisconnect(EventPlayerDisconnect @event, GameEventInfo info)
     {
         var player = @event.Userid;
@@ -158,9 +150,11 @@ public class FakePing : BasePlugin
     }
 }
 
-// ★★★ НОВЫЙ КЛАСС ДЛЯ ДОСТУПА К СХЕМЕ ИГРОКА ★★★
 public class PlayerSchema : BaseSchema
 {
     [SchemaMember("CCSPlayerController", "m_iPing")]
     public ref uint m_iPing => ref Schema.GetRef<uint>(this.Handle, "CCSPlayerController", "m_iPing");
+
+    [SchemaMember("CCSPlayerController", "m_nPing")]
+    public ref int m_nPing => ref Schema.GetRef<int>(this.Handle, "CCSPlayerController", "m_nPing");
 }
