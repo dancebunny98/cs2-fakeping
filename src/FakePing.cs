@@ -40,24 +40,21 @@ public class FakePing : BasePlugin
     [CommandHelper(minArgs: 2, usage: "<#userid or name> <ping>")]
     private void OnFakePingCommand(CCSPlayerController? caller, CommandInfo commandInfo)
     {
-        string targetName = commandInfo.GetArg(1);
-        var target = FindPlayer(targetName);
-        
+        var target = FindPlayer(commandInfo.GetArg(1));
         if (target == null)
         {
-            commandInfo.ReplyToCommand($" {ChatColors.Red} Player '{targetName}' not found.");
+            commandInfo.ReplyToCommand($" {ChatColors.Red} Player not found.");
             return;
         }
 
         if (!int.TryParse(commandInfo.GetArg(2), out int ping) || ping < 0 || ping > 4095)
         {
-            commandInfo.ReplyToCommand($" {ChatColors.Red} Invalid ping value. Must be between 0 and 4095.");
+            commandInfo.ReplyToCommand($" {ChatColors.Red} Invalid ping (0-4095).");
             return;
         }
 
         _fakePing[target] = ping;
         UpdatePlayerPing(target);
-
         commandInfo.ReplyToCommand($" {ChatColors.Green} Fake ping set to {ping} ms for {target.PlayerName}");
     }
 
@@ -65,63 +62,46 @@ public class FakePing : BasePlugin
     [CommandHelper(minArgs: 1, usage: "<#userid or name>")]
     private void OnFakePingRemoveCommand(CCSPlayerController? caller, CommandInfo commandInfo)
     {
-        string targetName = commandInfo.GetArg(1);
-        var target = FindPlayer(targetName);
-
+        var target = FindPlayer(commandInfo.GetArg(1));
         if (target == null)
         {
-            commandInfo.ReplyToCommand($" {ChatColors.Red} Player '{targetName}' not found.");
+            commandInfo.ReplyToCommand($" {ChatColors.Red} Player not found.");
             return;
         }
 
         if (_fakePing.ContainsKey(target))
             _fakePing.Remove(target);
 
+        // Сбрасываем пинг
         target.Ping = 0;
+        target.SetNetworkedInt("m_iPing", 0);
+        Utilities.SetStateChanged(target, "CCSPlayerController", "m_iPing");
         commandInfo.ReplyToCommand($" {ChatColors.Green} Fake ping removed for {target.PlayerName}");
     }
 
-    // Поиск игрока по строке: поддерживает #userid или частичное имя
     private CCSPlayerController? FindPlayer(string input)
     {
-        var players = Utilities.GetPlayers();
-        CCSPlayerController? result = null;
-
-        // Проверяем, не указан ли userid (#123)
         if (input.StartsWith("#") && int.TryParse(input.Substring(1), out int userId))
         {
-            foreach (var player in players)
-            {
-                if (player != null && player.UserId == userId)
-                    return player;
-            }
-            return null;
-        }
-
-        // Ищем по точному совпадению имени (без учета регистра)
-        foreach (var player in players)
-        {
-            if (player != null && player.PlayerName != null && 
-                player.PlayerName.Equals(input, StringComparison.OrdinalIgnoreCase))
-            {
+            var player = Utilities.GetPlayerFromUserid(userId);
+            if (player != null && player.IsValid && !player.IsBot)
                 return player;
-            }
         }
 
-        // Ищем по частичному совпадению (содержит подстроку)
-        foreach (var player in players)
+        var players = Utilities.GetPlayers();
+        foreach (var p in players)
         {
-            if (player != null && player.PlayerName != null && 
-                player.PlayerName.Contains(input, StringComparison.OrdinalIgnoreCase))
-            {
-                // Если уже найден один, то возвращаем null (неоднозначность)
-                if (result != null)
-                    return null;
-                result = player;
-            }
+            if (p != null && p.IsValid && !p.IsBot && p.PlayerName.Equals(input, StringComparison.OrdinalIgnoreCase))
+                return p;
         }
 
-        return result;
+        foreach (var p in players)
+        {
+            if (p != null && p.IsValid && !p.IsBot && p.PlayerName.Contains(input, StringComparison.OrdinalIgnoreCase))
+                return p;
+        }
+
+        return null;
     }
 
     private void UpdatePlayerPing(CCSPlayerController player)
@@ -131,6 +111,8 @@ public class FakePing : BasePlugin
         if (_fakePing.TryGetValue(player, out int fakePing))
         {
             player.Ping = (uint)fakePing;
+            player.SetNetworkedInt("m_iPing", fakePing);
+            Utilities.SetStateChanged(player, "CCSPlayerController", "m_iPing");
         }
     }
 
@@ -139,9 +121,7 @@ public class FakePing : BasePlugin
         foreach (var player in Utilities.GetPlayers())
         {
             if (player != null && player.IsValid && !player.IsBot)
-            {
                 UpdatePlayerPing(player);
-            }
         }
     }
 
