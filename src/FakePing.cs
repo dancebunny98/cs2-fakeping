@@ -6,7 +6,6 @@ using CounterStrikeSharp.API.Modules.Admin;
 using CounterStrikeSharp.API.Modules.Commands;
 using CounterStrikeSharp.API.Modules.Utils;
 using CounterStrikeSharp.API.Modules.Timers;
-using CounterStrikeSharp.API.Modules.Entities;
 
 namespace FakePing;
 
@@ -22,15 +21,12 @@ public class FakePing : BasePlugin
 
     public override void Load(bool hotReload)
     {
-        // Регистрация команд (без параметра 'who')
         AddCommand("css_fakeping", "Set fake ping for a player. Usage: !fakeping <#userid or name> <ping>", OnFakePingCommand);
         AddCommand("css_fakeping_remove", "Remove fake ping from a player. Usage: !fakeping_remove <#userid or name>", OnFakePingRemoveCommand);
 
-        // Хуки событий вместо переопределения OnPlayerConnect/Disconnect
         RegisterEventHandler<EventPlayerConnectFull>(OnPlayerConnectFull);
         RegisterEventHandler<EventPlayerDisconnect>(OnPlayerDisconnect);
 
-        // Таймер обновления пинга каждые 5 секунд
         _updateTimer = AddTimer(5.0f, UpdateAllPings, TimerFlags.REPEAT);
     }
 
@@ -45,21 +41,13 @@ public class FakePing : BasePlugin
     private void OnFakePingCommand(CCSPlayerController? caller, CommandInfo commandInfo)
     {
         string targetName = commandInfo.GetArg(1);
-        var targets = CommandHelpers.GetPlayersFromTarget(targetName, out _);
+        var target = FindPlayer(targetName);
         
-        if (targets.Count == 0)
+        if (target == null)
         {
             commandInfo.ReplyToCommand($" {ChatColors.Red} Player '{targetName}' not found.");
             return;
         }
-
-        if (targets.Count > 1)
-        {
-            commandInfo.ReplyToCommand($" {ChatColors.Red} Multiple players match '{targetName}'. Please be more specific.");
-            return;
-        }
-
-        var target = targets.First();
 
         if (!int.TryParse(commandInfo.GetArg(2), out int ping) || ping < 0 || ping > 4095)
         {
@@ -78,28 +66,62 @@ public class FakePing : BasePlugin
     private void OnFakePingRemoveCommand(CCSPlayerController? caller, CommandInfo commandInfo)
     {
         string targetName = commandInfo.GetArg(1);
-        var targets = CommandHelpers.GetPlayersFromTarget(targetName, out _);
+        var target = FindPlayer(targetName);
 
-        if (targets.Count == 0)
+        if (target == null)
         {
             commandInfo.ReplyToCommand($" {ChatColors.Red} Player '{targetName}' not found.");
             return;
         }
 
-        if (targets.Count > 1)
-        {
-            commandInfo.ReplyToCommand($" {ChatColors.Red} Multiple players match '{targetName}'. Please be more specific.");
-            return;
-        }
-
-        var target = targets.First();
-
         if (_fakePing.ContainsKey(target))
             _fakePing.Remove(target);
 
-        // Сбрасываем пинг
         target.Ping = 0;
         commandInfo.ReplyToCommand($" {ChatColors.Green} Fake ping removed for {target.PlayerName}");
+    }
+
+    // Поиск игрока по строке: поддерживает #userid или частичное имя
+    private CCSPlayerController? FindPlayer(string input)
+    {
+        var players = Utilities.GetPlayers();
+        CCSPlayerController? result = null;
+
+        // Проверяем, не указан ли userid (#123)
+        if (input.StartsWith("#") && int.TryParse(input.Substring(1), out int userId))
+        {
+            foreach (var player in players)
+            {
+                if (player != null && player.UserId == userId)
+                    return player;
+            }
+            return null;
+        }
+
+        // Ищем по точному совпадению имени (без учета регистра)
+        foreach (var player in players)
+        {
+            if (player != null && player.PlayerName != null && 
+                player.PlayerName.Equals(input, StringComparison.OrdinalIgnoreCase))
+            {
+                return player;
+            }
+        }
+
+        // Ищем по частичному совпадению (содержит подстроку)
+        foreach (var player in players)
+        {
+            if (player != null && player.PlayerName != null && 
+                player.PlayerName.Contains(input, StringComparison.OrdinalIgnoreCase))
+            {
+                // Если уже найден один, то возвращаем null (неоднозначность)
+                if (result != null)
+                    return null;
+                result = player;
+            }
+        }
+
+        return result;
     }
 
     private void UpdatePlayerPing(CCSPlayerController player)
@@ -123,7 +145,6 @@ public class FakePing : BasePlugin
         }
     }
 
-    // Обработчик события подключения игрока
     private HookResult OnPlayerConnectFull(EventPlayerConnectFull @event, GameEventInfo info)
     {
         var player = @event.Userid;
@@ -132,7 +153,6 @@ public class FakePing : BasePlugin
         return HookResult.Continue;
     }
 
-    // Обработчик события отключения игрока
     private HookResult OnPlayerDisconnect(EventPlayerDisconnect @event, GameEventInfo info)
     {
         var player = @event.Userid;
