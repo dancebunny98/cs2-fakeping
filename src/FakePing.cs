@@ -14,7 +14,7 @@ namespace FakePing;
 public class FakePing : BasePlugin
 {
     public override string ModuleName => "Fake Ping";
-    public override string ModuleVersion => "3.0.0";
+    public override string ModuleVersion => "3.1.0";
     public override string ModuleAuthor => "Your Name";
 
     // =========================================================
@@ -34,7 +34,7 @@ public class FakePing : BasePlugin
     private CounterStrikeSharp.API.Modules.Timers.Timer? _updateTimer;
 
     // =========================================================
-    // PATHS
+    // FILE PATHS
     // =========================================================
 
     private string PluginDirectory =>
@@ -47,14 +47,14 @@ public class FakePing : BasePlugin
             "FakePing"
         );
 
-    // Ручной конфиг администратора.
+    // Ручной конфиг.
     private string ConfigFile =>
         Path.Combine(
             PluginDirectory,
             "FakePingConfig.json"
         );
 
-    // Сохранения команд.
+    // Сохранённые команды.
     private string DataFile =>
         Path.Combine(
             PluginDirectory,
@@ -175,27 +175,40 @@ public class FakePing : BasePlugin
         if (string.IsNullOrEmpty(text))
             return HookResult.Continue;
 
-        // Убираем возможные пробелы перед командой.
         text = text.TrimStart();
 
-        // Поддерживаем:
-        // !fakeping
-        // /fakeping
-        // !fakeping_remove
-        // /fakeping_remove
+        // -----------------------------------------------------
+        // !fakeping /fakeping
+        // !fakeping_remove /fakeping_remove
+        // -----------------------------------------------------
 
         if (
-            text.StartsWith("!fakeping", StringComparison.OrdinalIgnoreCase) ||
-            text.StartsWith("/fakeping", StringComparison.OrdinalIgnoreCase) ||
-            text.StartsWith("!fakeping_remove", StringComparison.OrdinalIgnoreCase) ||
-            text.StartsWith("/fakeping_remove", StringComparison.OrdinalIgnoreCase)
+            IsChatCommand(text, "!fakeping") ||
+            IsChatCommand(text, "/fakeping") ||
+            IsChatCommand(text, "!fakeping_remove") ||
+            IsChatCommand(text, "/fakeping_remove")
         )
         {
-            // Не показываем сообщение в общем чате.
+            // Не показываем команду остальным игрокам.
             info.DontBroadcast = true;
         }
 
         return HookResult.Continue;
+    }
+
+    // Проверяет именно название команды,
+    // чтобы !fakeping_test не считалось !fakeping.
+    private bool IsChatCommand(string text, string command)
+    {
+        if (!text.StartsWith(command, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (text.Length == command.Length)
+            return true;
+
+        char next = text[command.Length];
+
+        return char.IsWhiteSpace(next);
     }
 
     // =========================================================
@@ -276,7 +289,7 @@ public class FakePing : BasePlugin
             }
 
             // -------------------------------------------------
-            // DATA
+            // CREATE DATA
             // -------------------------------------------------
 
             var data = new FakePingData
@@ -304,7 +317,7 @@ public class FakePing : BasePlugin
             SaveData();
 
             command.ReplyToCommand(
-                $"{ChatColors.Green} Dynamic fake ping enabled for {target.PlayerName}: {min}-{max} ms every {interval} sec."
+                $"{ChatColors.Green} Dynamic fake ping enabled for {target.PlayerName}: range {min}-{max} ms, change every {interval} sec."
             );
 
             return;
@@ -390,9 +403,6 @@ public class FakePing : BasePlugin
         // CONFIG PRIORITY
         // -----------------------------------------------------
 
-        // Если игрок находится в FakePingConfig.json,
-        // команда remove НЕ должна удалять его постоянный
-        // конфиг. Иначе смысл "always fakeping" теряется.
         if (_configFakePingData.ContainsKey(steamId))
         {
             command.ReplyToCommand(
@@ -460,12 +470,6 @@ public class FakePing : BasePlugin
         if (player == null)
             return HookResult.Continue;
 
-        // Удаляем только runtime-ссылку.
-        //
-        // Настройки НЕ удаляем:
-        // они находятся в FakePingData.json
-        // или FakePingConfig.json.
-
         _fakePingData.Remove(player);
 
         return HookResult.Continue;
@@ -475,7 +479,9 @@ public class FakePing : BasePlugin
     // RESTORE PLAYER
     // =========================================================
 
-    private void RestorePlayer(CCSPlayerController player)
+    private void RestorePlayer(
+        CCSPlayerController player
+    )
     {
         if (
             player == null ||
@@ -491,25 +497,31 @@ public class FakePing : BasePlugin
         FakePingData? data = null;
 
         // =====================================================
-        // PRIORITY #1 - MANUAL CONFIG
+        // PRIORITY #1
+        // MANUAL CONFIG
         // =====================================================
 
-        if (_configFakePingData.TryGetValue(
-            steamId,
-            out var configData
-        ))
+        if (
+            _configFakePingData.TryGetValue(
+                steamId,
+                out var configData
+            )
+        )
         {
             data = CloneData(configData);
         }
 
         // =====================================================
-        // PRIORITY #2 - SAVED COMMAND DATA
+        // PRIORITY #2
+        // SAVED COMMAND DATA
         // =====================================================
 
-        else if (_savedFakePingData.TryGetValue(
-            steamId,
-            out var savedData
-        ))
+        else if (
+            _savedFakePingData.TryGetValue(
+                steamId,
+                out var savedData
+            )
+        )
         {
             data = CloneData(savedData);
         }
@@ -524,45 +536,56 @@ public class FakePing : BasePlugin
             return;
         }
 
-        // Для dynamic режима после входа/смены карты
-        // обновляем ping сразу.
+        // =====================================================
+        // DYNAMIC
+        // =====================================================
+
         if (data.IsDynamic)
         {
-            data.NextUpdateTime = 0;
-
+            // Новый random ping сразу после подключения.
             data.CurrentPing = Random.Shared.Next(
                 data.MinPing,
                 data.MaxPing + 1
             );
 
-            // Следующее изменение через IntervalSeconds.
             data.NextUpdateTime =
                 GetCurrentUnixTimeSeconds() +
                 data.IntervalSeconds;
         }
         else
         {
+            // STATIC
             data.CurrentPing = data.StaticPing;
         }
 
         _fakePingData[player] = data;
 
-        // Сразу применяем.
-        ApplyPing(player, data);
+        ApplyPing(
+            player,
+            data
+        );
     }
 
     // =========================================================
     // FIND PLAYER
     // =========================================================
 
-    private CCSPlayerController? FindPlayer(string input)
+    private CCSPlayerController? FindPlayer(
+        string input
+    )
     {
         input = input.Trim();
 
-        // -----------------------------------------------------
-        // STEAMID64
-        // -----------------------------------------------------
+        var players = Utilities.GetPlayers();
 
+        // =====================================================
+        // STEAMID64
+        // =====================================================
+
+        // Не используем GetPlayerFromSteamId64(),
+        // потому что его нет в некоторых версиях CSS API.
+        //
+        // Вместо этого просто перебираем игроков.
         if (
             ulong.TryParse(
                 input,
@@ -571,23 +594,25 @@ public class FakePing : BasePlugin
             steamId > 0
         )
         {
-            var player = Utilities.GetPlayerFromSteamId64(
-                steamId
-            );
-
-            if (
-                player != null &&
-                player.IsValid &&
-                !player.IsBot
-            )
+            foreach (var player in players)
             {
-                return player;
+                if (
+                    player == null ||
+                    !player.IsValid ||
+                    player.IsBot
+                )
+                {
+                    continue;
+                }
+
+                if (player.SteamID == steamId)
+                    return player;
             }
         }
 
-        // -----------------------------------------------------
+        // =====================================================
         // #USERID
-        // -----------------------------------------------------
+        // =====================================================
 
         if (
             input.StartsWith("#") &&
@@ -597,9 +622,10 @@ public class FakePing : BasePlugin
             )
         )
         {
-            var player = Utilities.GetPlayerFromUserid(
-                userId
-            );
+            var player =
+                Utilities.GetPlayerFromUserid(
+                    userId
+                );
 
             if (
                 player != null &&
@@ -611,11 +637,9 @@ public class FakePing : BasePlugin
             }
         }
 
-        // -----------------------------------------------------
+        // =====================================================
         // EXACT NAME
-        // -----------------------------------------------------
-
-        var players = Utilities.GetPlayers();
+        // =====================================================
 
         foreach (var player in players)
         {
@@ -633,9 +657,9 @@ public class FakePing : BasePlugin
             }
         }
 
-        // -----------------------------------------------------
+        // =====================================================
         // PARTIAL NAME
-        // -----------------------------------------------------
+        // =====================================================
 
         foreach (var player in players)
         {
@@ -676,30 +700,35 @@ public class FakePing : BasePlugin
                 player.IsBot
             )
             {
-                _fakePingData.Remove(player);
+                if (player != null)
+                    _fakePingData.Remove(player);
+
                 continue;
             }
 
-            // -------------------------------------------------
+            // =================================================
             // STATIC
-            // -------------------------------------------------
+            // =================================================
 
             if (!data.IsDynamic)
             {
-                data.CurrentPing = data.StaticPing;
+                data.CurrentPing =
+                    data.StaticPing;
+
                 continue;
             }
 
-            // -------------------------------------------------
+            // =================================================
             // DYNAMIC
-            // -------------------------------------------------
+            // =================================================
 
             if (currentTime >= data.NextUpdateTime)
             {
-                data.CurrentPing = Random.Shared.Next(
-                    data.MinPing,
-                    data.MaxPing + 1
-                );
+                data.CurrentPing =
+                    Random.Shared.Next(
+                        data.MinPing,
+                        data.MaxPing + 1
+                    );
 
                 data.NextUpdateTime =
                     currentTime +
@@ -728,7 +757,10 @@ public class FakePing : BasePlugin
                 continue;
             }
 
-            ApplyPing(player, data);
+            ApplyPing(
+                player,
+                data
+            );
         }
     }
 
@@ -760,14 +792,13 @@ public class FakePing : BasePlugin
     }
 
     // =========================================================
-    // LOAD CONFIG
+    // LOAD MANUAL CONFIG
     // =========================================================
 
     private void LoadConfig()
     {
         try
         {
-            // Если файла нет — создаём пример.
             if (!File.Exists(ConfigFile))
             {
                 _configFakePingData =
@@ -782,9 +813,8 @@ public class FakePing : BasePlugin
                 return;
             }
 
-            string json = File.ReadAllText(
-                ConfigFile
-            );
+            string json =
+                File.ReadAllText(ConfigFile);
 
             var config =
                 JsonSerializer.Deserialize<
@@ -818,7 +848,7 @@ public class FakePing : BasePlugin
     }
 
     // =========================================================
-    // SAVE CONFIG
+    // SAVE MANUAL CONFIG
     // =========================================================
 
     private void SaveConfig()
@@ -849,7 +879,7 @@ public class FakePing : BasePlugin
     }
 
     // =========================================================
-    // LOAD SAVED DATA
+    // LOAD SAVED COMMAND DATA
     // =========================================================
 
     private void LoadData()
@@ -871,9 +901,7 @@ public class FakePing : BasePlugin
             }
 
             string json =
-                File.ReadAllText(
-                    DataFile
-                );
+                File.ReadAllText(DataFile);
 
             var data =
                 JsonSerializer.Deserialize<
@@ -907,7 +935,7 @@ public class FakePing : BasePlugin
     }
 
     // =========================================================
-    // SAVE DATA
+    // SAVE COMMAND DATA
     // =========================================================
 
     private void SaveData()
@@ -938,7 +966,7 @@ public class FakePing : BasePlugin
     }
 
     // =========================================================
-    // VALIDATE DATA
+    // VALIDATE / NORMALIZE
     // =========================================================
 
     private void ValidateAndNormalize(
@@ -952,12 +980,20 @@ public class FakePing : BasePlugin
             if (item == null)
                 continue;
 
+            // -------------------------------------------------
+            // STATIC PING
+            // -------------------------------------------------
+
             item.StaticPing =
                 Math.Clamp(
                     item.StaticPing,
                     0,
                     4095
                 );
+
+            // -------------------------------------------------
+            // RANGE
+            // -------------------------------------------------
 
             item.MinPing =
                 Math.Clamp(
@@ -975,7 +1011,8 @@ public class FakePing : BasePlugin
 
             if (item.MinPing > item.MaxPing)
             {
-                int temp = item.MinPing;
+                int temp =
+                    item.MinPing;
 
                 item.MinPing =
                     item.MaxPing;
@@ -984,8 +1021,16 @@ public class FakePing : BasePlugin
                     temp;
             }
 
+            // -------------------------------------------------
+            // INTERVAL
+            // -------------------------------------------------
+
             if (item.IntervalSeconds < 1)
                 item.IntervalSeconds = 1;
+
+            // -------------------------------------------------
+            // CURRENT PING
+            // -------------------------------------------------
 
             if (!item.IsDynamic)
             {
@@ -1014,12 +1059,17 @@ public class FakePing : BasePlugin
     {
         return new FakePingData
         {
-            IsDynamic = data.IsDynamic,
+            IsDynamic =
+                data.IsDynamic,
 
-            StaticPing = data.StaticPing,
+            StaticPing =
+                data.StaticPing,
 
-            MinPing = data.MinPing,
-            MaxPing = data.MaxPing,
+            MinPing =
+                data.MinPing,
+
+            MaxPing =
+                data.MaxPing,
 
             IntervalSeconds =
                 data.IntervalSeconds,
@@ -1033,20 +1083,20 @@ public class FakePing : BasePlugin
     }
 
     // =========================================================
-    // TIME
+    // UNIX TIME
     // =========================================================
 
     private float GetCurrentUnixTimeSeconds()
     {
         return (float)
             DateTimeOffset.UtcNow
-                .ToUnixTimeMilliseconds() /
-            1000.0f;
+                .ToUnixTimeMilliseconds()
+            / 1000.0f;
     }
 }
 
 // =============================================================
-// FAKE PING DATA
+// DATA MODEL
 // =============================================================
 
 public class FakePingData
