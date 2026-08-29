@@ -1,4 +1,3 @@
-```csharp
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Core.Attributes;
@@ -1066,4 +1065,3 @@ public class FakePingData
 
     public int CurrentPing { get; set; }
 }
-```
