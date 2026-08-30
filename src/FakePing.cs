@@ -6,7 +6,6 @@ using CounterStrikeSharp.API.Modules.Admin;
 using CounterStrikeSharp.API.Modules.Commands;
 using CounterStrikeSharp.API.Modules.Utils;
 using CounterStrikeSharp.API.Modules.Timers;
-using CounterStrikeSharp.API.Modules.Events;
 using System.Text.Json;
 
 namespace FakePing;
@@ -468,10 +467,8 @@ public class FakePing : BasePlugin
     {
         var player = @event.Userid;
 
-        if (player == null)
-            return HookResult.Continue;
-
-        _fakePingData.Remove(player);
+        if (player != null)
+            _fakePingData.Remove(player);
 
         return HookResult.Continue;
     }
@@ -580,33 +577,13 @@ public class FakePing : BasePlugin
         var players = Utilities.GetPlayers();
 
         // =====================================================
-        // STEAMID64
+        // STEAMID64 (перебором)
         // =====================================================
-
-        // Не используем GetPlayerFromSteamId64(),
-        // потому что его нет в некоторых версиях CSS API.
-        //
-        // Вместо этого просто перебираем игроков.
-        if (
-            ulong.TryParse(
-                input,
-                out ulong steamId
-            ) &&
-            steamId > 0
-        )
+        if (ulong.TryParse(input, out ulong steamId) && steamId > 0)
         {
             foreach (var player in players)
             {
-                if (
-                    player == null ||
-                    !player.IsValid ||
-                    player.IsBot
-                )
-                {
-                    continue;
-                }
-
-                if (player.SteamID == steamId)
+                if (player != null && player.IsValid && !player.IsBot && player.SteamID == steamId)
                     return player;
             }
         }
