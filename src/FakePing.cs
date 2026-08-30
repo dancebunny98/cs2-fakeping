@@ -47,14 +47,12 @@ public class FakePing : BasePlugin
             "FakePing"
         );
 
-    // Ручной конфиг.
     private string ConfigFile =>
         Path.Combine(
             PluginDirectory,
             "FakePingConfig.json"
         );
 
-    // Сохранённые команды.
     private string DataFile =>
         Path.Combine(
             PluginDirectory,
@@ -177,11 +175,6 @@ public class FakePing : BasePlugin
 
         text = text.TrimStart();
 
-        // -----------------------------------------------------
-        // !fakeping /fakeping
-        // !fakeping_remove /fakeping_remove
-        // -----------------------------------------------------
-
         if (
             IsChatCommand(text, "!fakeping") ||
             IsChatCommand(text, "/fakeping") ||
@@ -189,15 +182,12 @@ public class FakePing : BasePlugin
             IsChatCommand(text, "/fakeping_remove")
         )
         {
-            // Не показываем команду остальным игрокам.
             info.DontBroadcast = true;
         }
 
         return HookResult.Continue;
     }
 
-    // Проверяет именно название команды,
-    // чтобы !fakeping_test не считалось !fakeping.
     private bool IsChatCommand(string text, string command)
     {
         if (!text.StartsWith(command, StringComparison.OrdinalIgnoreCase))
@@ -247,10 +237,6 @@ public class FakePing : BasePlugin
             string rangeArg = command.GetArg(2);
             string intervalArg = command.GetArg(3);
 
-            // -------------------------------------------------
-            // INTERVAL
-            // -------------------------------------------------
-
             if (
                 !int.TryParse(
                     intervalArg,
@@ -265,10 +251,6 @@ public class FakePing : BasePlugin
 
                 return;
             }
-
-            // -------------------------------------------------
-            // RANGE
-            // -------------------------------------------------
 
             string[] parts = rangeArg.Split('-');
 
@@ -288,30 +270,18 @@ public class FakePing : BasePlugin
                 return;
             }
 
-            // -------------------------------------------------
-            // CREATE DATA
-            // -------------------------------------------------
-
             var data = new FakePingData
             {
                 IsDynamic = true,
-
                 StaticPing = 0,
-
                 MinPing = min,
                 MaxPing = max,
-
                 IntervalSeconds = interval,
-
                 NextUpdateTime = 0,
-
                 CurrentPing = min
             };
 
-            // Runtime.
             _fakePingData[target] = CloneData(data);
-
-            // Persistent.
             _savedFakePingData[steamId] = CloneData(data);
 
             SaveData();
@@ -346,23 +316,15 @@ public class FakePing : BasePlugin
         var staticData = new FakePingData
         {
             IsDynamic = false,
-
             StaticPing = ping,
-
             MinPing = 0,
             MaxPing = 0,
-
             IntervalSeconds = 0,
-
             NextUpdateTime = 0,
-
             CurrentPing = ping
         };
 
-        // Runtime.
         _fakePingData[target] = CloneData(staticData);
-
-        // Persistent.
         _savedFakePingData[steamId] = CloneData(staticData);
 
         SaveData();
@@ -399,10 +361,6 @@ public class FakePing : BasePlugin
 
         ulong steamId = target.SteamID;
 
-        // -----------------------------------------------------
-        // CONFIG PRIORITY
-        // -----------------------------------------------------
-
         if (_configFakePingData.ContainsKey(steamId))
         {
             command.ReplyToCommand(
@@ -412,16 +370,7 @@ public class FakePing : BasePlugin
             return;
         }
 
-        // -----------------------------------------------------
-        // REMOVE RUNTIME
-        // -----------------------------------------------------
-
         _fakePingData.Remove(target);
-
-        // -----------------------------------------------------
-        // REMOVE SAVED
-        // -----------------------------------------------------
-
         _savedFakePingData.Remove(steamId);
 
         SaveData();
@@ -494,11 +443,6 @@ public class FakePing : BasePlugin
 
         FakePingData? data = null;
 
-        // =====================================================
-        // PRIORITY #1
-        // MANUAL CONFIG
-        // =====================================================
-
         if (
             _configFakePingData.TryGetValue(
                 steamId,
@@ -508,11 +452,6 @@ public class FakePing : BasePlugin
         {
             data = CloneData(configData);
         }
-
-        // =====================================================
-        // PRIORITY #2
-        // SAVED COMMAND DATA
-        // =====================================================
 
         else if (
             _savedFakePingData.TryGetValue(
@@ -524,23 +463,14 @@ public class FakePing : BasePlugin
             data = CloneData(savedData);
         }
 
-        // =====================================================
-        // NOTHING
-        // =====================================================
-
         if (data == null)
         {
             _fakePingData.Remove(player);
             return;
         }
 
-        // =====================================================
-        // DYNAMIC
-        // =====================================================
-
         if (data.IsDynamic)
         {
-            // Новый random ping сразу после подключения.
             data.CurrentPing = Random.Shared.Next(
                 data.MinPing,
                 data.MaxPing + 1
@@ -552,7 +482,6 @@ public class FakePing : BasePlugin
         }
         else
         {
-            // STATIC
             data.CurrentPing = data.StaticPing;
         }
 
@@ -684,10 +613,6 @@ public class FakePing : BasePlugin
                 continue;
             }
 
-            // =================================================
-            // STATIC
-            // =================================================
-
             if (!data.IsDynamic)
             {
                 data.CurrentPing =
@@ -695,10 +620,6 @@ public class FakePing : BasePlugin
 
                 continue;
             }
-
-            // =================================================
-            // DYNAMIC
-            // =================================================
 
             if (currentTime >= data.NextUpdateTime)
             {
@@ -770,7 +691,7 @@ public class FakePing : BasePlugin
     }
 
     // =========================================================
-    // LOAD MANUAL CONFIG
+    // LOAD / SAVE CONFIG
     // =========================================================
 
     private void LoadConfig()
@@ -825,10 +746,6 @@ public class FakePing : BasePlugin
         }
     }
 
-    // =========================================================
-    // SAVE MANUAL CONFIG
-    // =========================================================
-
     private void SaveConfig()
     {
         try
@@ -857,7 +774,7 @@ public class FakePing : BasePlugin
     }
 
     // =========================================================
-    // LOAD SAVED COMMAND DATA
+    // LOAD / SAVE DATA
     // =========================================================
 
     private void LoadData()
@@ -912,10 +829,6 @@ public class FakePing : BasePlugin
         }
     }
 
-    // =========================================================
-    // SAVE COMMAND DATA
-    // =========================================================
-
     private void SaveData()
     {
         try
@@ -958,20 +871,12 @@ public class FakePing : BasePlugin
             if (item == null)
                 continue;
 
-            // -------------------------------------------------
-            // STATIC PING
-            // -------------------------------------------------
-
             item.StaticPing =
                 Math.Clamp(
                     item.StaticPing,
                     0,
                     4095
                 );
-
-            // -------------------------------------------------
-            // RANGE
-            // -------------------------------------------------
 
             item.MinPing =
                 Math.Clamp(
@@ -999,16 +904,8 @@ public class FakePing : BasePlugin
                     temp;
             }
 
-            // -------------------------------------------------
-            // INTERVAL
-            // -------------------------------------------------
-
             if (item.IntervalSeconds < 1)
                 item.IntervalSeconds = 1;
-
-            // -------------------------------------------------
-            // CURRENT PING
-            // -------------------------------------------------
 
             if (!item.IsDynamic)
             {
