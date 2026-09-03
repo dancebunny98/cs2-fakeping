@@ -16,7 +16,7 @@ public class FakePing : BasePlugin
 {
     public override string ModuleName => "Fake Ping";
     public override string ModuleVersion => "3.2.0";
-    public override string ModuleAuthor => "Your Name";
+    public override string ModuleAuthor => "Dancebunny98";
 
     private readonly Dictionary<CCSPlayerController, FakePingData> _fakePingData = new();
     private Dictionary<ulong, FakePingData> _savedFakePingData = new();
