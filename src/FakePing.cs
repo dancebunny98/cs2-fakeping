@@ -6,6 +6,7 @@ using CounterStrikeSharp.API.Modules.Admin;
 using CounterStrikeSharp.API.Modules.Commands;
 using CounterStrikeSharp.API.Modules.Utils;
 using CounterStrikeSharp.API.Modules.Timers;
+using CounterStrikeSharp.API.Modules.Events;
 using System.Text.Json;
 
 namespace FakePing;
@@ -23,7 +24,7 @@ public class FakePing : BasePlugin
     private CounterStrikeSharp.API.Modules.Timers.Timer? _updateTimer;
 
     private string PluginDirectory =>
-        Path.Combine(Server.GameDirectory, "addons", "counterstrikesharp", "configs", "plugins", "FakePing");
+        Path.Combine(Application.RootDirectory, "configs", "plugins", "FakePing");
     private string ConfigFile => Path.Combine(PluginDirectory, "FakePingConfig.json");
     private string DataFile => Path.Combine(PluginDirectory, "FakePingData.json");
 
