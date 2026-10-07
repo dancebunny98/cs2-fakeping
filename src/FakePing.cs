@@ -27,6 +27,27 @@ public class FakePing : BasePlugin
         Path.Combine(Application.RootDirectory, "configs", "plugins", "FakePing");
     private string ConfigFile => Path.Combine(PluginDirectory, "FakePingConfig.json");
     private string DataFile => Path.Combine(PluginDirectory, "FakePingData.json");
+    private string LocalizationFile => Path.Combine(PluginDirectory, "FakePingLocalization.json");
+    private Dictionary<string, string> _translations = new();
+
+    private string Text(string key, params object[] args) =>
+        string.Format(_translations.GetValueOrDefault(key, key), args);
+
+    private void LoadTranslations()
+    {
+        if (!File.Exists(LocalizationFile))
+            File.WriteAllText(LocalizationFile, "{\"Language\":\"ru\"}");
+
+        using var document = JsonDocument.Parse(File.ReadAllText(LocalizationFile));
+        var language = document.RootElement.TryGetProperty("Language", out var value) &&
+            string.Equals(value.GetString(), "en", StringComparison.OrdinalIgnoreCase) ? "en" : "ru";
+        var path = Path.Combine(ModuleDirectory, "lang", $"{language}.json");
+        if (!File.Exists(path))
+            path = Path.Combine(ModuleDirectory, "lang", "en.json");
+        _translations = File.Exists(path)
+            ? JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(path)) ?? new()
+            : new();
+    }
 
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -37,19 +58,20 @@ public class FakePing : BasePlugin
     public override void Load(bool hotReload)
     {
         Directory.CreateDirectory(PluginDirectory);
+        LoadTranslations();
 
         LoadConfig();
         LoadData();
 
         AddCommand(
             "css_fakeping",
-            "Set fake ping. Usage: !fakeping <player> <ping> OR !fakeping <player> <min-max> <interval>",
+            Text("set_command_description"),
             OnFakePingCommand
         );
 
         AddCommand(
             "css_fakeping_remove",
-            "Remove fake ping. Usage: !fakeping_remove <player>",
+            Text("remove_command_description"),
             OnFakePingRemoveCommand
         );
 
@@ -71,7 +93,7 @@ public class FakePing : BasePlugin
         }
 
         Console.WriteLine(
-            $"[FakePing] Loaded. Config entries: {_configFakePingData.Count}, saved entries: {_savedFakePingData.Count}"
+            $"[FakePing] {Text("loaded", _configFakePingData.Count, _savedFakePingData.Count)}"
         );
     }
 
@@ -90,13 +112,13 @@ public class FakePing : BasePlugin
         var target = FindPlayer(command.GetArg(1));
         if (target == null)
         {
-            command.ReplyToCommand($"{ChatColors.Red} Player not found.");
+            command.ReplyToCommand($"{ChatColors.Red} {Text("player_not_found")}");
             return;
         }
 
         ulong steamId = target.SteamID;
 
-        // Динамический режим
+        // Dynamic mode updates the saved range and interval together.
         if (command.ArgCount >= 4)
         {
             string rangeArg = command.GetArg(2);
@@ -104,7 +126,7 @@ public class FakePing : BasePlugin
 
             if (!int.TryParse(intervalArg, out int interval) || interval < 1)
             {
-                command.ReplyToCommand($"{ChatColors.Red} Interval must be >= 1 second.");
+                command.ReplyToCommand($"{ChatColors.Red} {Text("invalid_interval")}");
                 return;
             }
 
@@ -114,7 +136,7 @@ public class FakePing : BasePlugin
                 !int.TryParse(parts[1], out int max) ||
                 min > max || min < 0 || max > 4095)
             {
-                command.ReplyToCommand($"{ChatColors.Red} Invalid range. Use format: min-max (e.g. 10-50).");
+                command.ReplyToCommand($"{ChatColors.Red} {Text("invalid_range")}");
                 return;
             }
 
@@ -134,15 +156,15 @@ public class FakePing : BasePlugin
             SaveData();
 
             command.ReplyToCommand(
-                $"{ChatColors.Green} Dynamic fake ping enabled for {target.PlayerName}: range {min}-{max} ms, change every {interval} sec."
+                $"{ChatColors.Green} {Text("dynamic_enabled", target.PlayerName, min, max, interval)}"
             );
             return;
         }
 
-        // Статический режим
+        // Static mode stores one fixed value for later player reconnects.
         if (!int.TryParse(command.GetArg(2), out int ping) || ping < 0 || ping > 4095)
         {
-            command.ReplyToCommand($"{ChatColors.Red} Ping must be 0-4095.");
+            command.ReplyToCommand($"{ChatColors.Red} {Text("invalid_ping")}");
             return;
         }
 
@@ -161,7 +183,7 @@ public class FakePing : BasePlugin
         _savedFakePingData[steamId] = CloneData(staticData);
         SaveData();
 
-        command.ReplyToCommand($"{ChatColors.Green} Static fake ping set to {ping} ms for {target.PlayerName}.");
+        command.ReplyToCommand($"{ChatColors.Green} {Text("static_enabled", ping, target.PlayerName)}");
     }
 
     [RequiresPermissions("@css/root")]
@@ -171,7 +193,7 @@ public class FakePing : BasePlugin
         var target = FindPlayer(command.GetArg(1));
         if (target == null)
         {
-            command.ReplyToCommand($"{ChatColors.Red} Player not found.");
+            command.ReplyToCommand($"{ChatColors.Red} {Text("player_not_found")}");
             return;
         }
 
@@ -180,7 +202,7 @@ public class FakePing : BasePlugin
         if (_configFakePingData.ContainsKey(steamId))
         {
             command.ReplyToCommand(
-                $"{ChatColors.Red} This player has a permanent fake ping in FakePingConfig.json. Remove the SteamID from the config first."
+                $"{ChatColors.Red} {Text("permanent_entry")}" 
             );
             return;
         }
@@ -189,7 +211,7 @@ public class FakePing : BasePlugin
         _savedFakePingData.Remove(steamId);
         SaveData();
 
-        command.ReplyToCommand($"{ChatColors.Green} Fake ping removed for {target.PlayerName}.");
+        command.ReplyToCommand($"{ChatColors.Green} {Text("removed", target.PlayerName)}");
     }
 
     private HookResult OnPlayerConnectFull(EventPlayerConnectFull @event, GameEventInfo info)
@@ -246,7 +268,7 @@ public class FakePing : BasePlugin
         input = input.Trim();
         var players = Utilities.GetPlayers();
 
-        // SteamID64 (перебором)
+        // Match SteamID64 by scanning connected players.
         if (ulong.TryParse(input, out ulong steamId) && steamId > 0)
         {
             foreach (var player in players)
@@ -328,7 +350,7 @@ public class FakePing : BasePlugin
         player.Ping = (uint)ping;
     }
 
-    // Загрузка / сохранение конфига и данных
+    // The permanent configuration and saved state have separate files.
     private void LoadConfig()
     {
         try
@@ -337,7 +359,7 @@ public class FakePing : BasePlugin
             {
                 _configFakePingData = new Dictionary<ulong, FakePingData>();
                 SaveConfig();
-                Console.WriteLine($"[FakePing] Created config: {ConfigFile}");
+                Console.WriteLine($"[FakePing] {Text("created_config", ConfigFile)}");
                 return;
             }
 
@@ -345,11 +367,11 @@ public class FakePing : BasePlugin
             var config = JsonSerializer.Deserialize<Dictionary<ulong, FakePingData>>(json, _jsonOptions);
             _configFakePingData = config ?? new Dictionary<ulong, FakePingData>();
             ValidateAndNormalize(_configFakePingData);
-            Console.WriteLine($"[FakePing] Loaded {_configFakePingData.Count} permanent config entries.");
+            Console.WriteLine($"[FakePing] {Text("loaded_config", _configFakePingData.Count)}");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[FakePing] ERROR loading config: {ex}");
+            Console.WriteLine($"[FakePing] {Text("error_loading_config", ex)}");
             _configFakePingData = new Dictionary<ulong, FakePingData>();
         }
     }
@@ -364,7 +386,7 @@ public class FakePing : BasePlugin
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[FakePing] ERROR saving config: {ex}");
+            Console.WriteLine($"[FakePing] {Text("error_saving_config", ex)}");
         }
     }
 
@@ -376,7 +398,7 @@ public class FakePing : BasePlugin
             {
                 _savedFakePingData = new Dictionary<ulong, FakePingData>();
                 SaveData();
-                Console.WriteLine($"[FakePing] Created data file: {DataFile}");
+                Console.WriteLine($"[FakePing] {Text("created_data", DataFile)}");
                 return;
             }
 
@@ -384,11 +406,11 @@ public class FakePing : BasePlugin
             var data = JsonSerializer.Deserialize<Dictionary<ulong, FakePingData>>(json, _jsonOptions);
             _savedFakePingData = data ?? new Dictionary<ulong, FakePingData>();
             ValidateAndNormalize(_savedFakePingData);
-            Console.WriteLine($"[FakePing] Loaded {_savedFakePingData.Count} saved entries.");
+            Console.WriteLine($"[FakePing] {Text("loaded_data", _savedFakePingData.Count)}");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[FakePing] ERROR loading data: {ex}");
+            Console.WriteLine($"[FakePing] {Text("error_loading_data", ex)}");
             _savedFakePingData = new Dictionary<ulong, FakePingData>();
         }
     }
@@ -403,7 +425,7 @@ public class FakePing : BasePlugin
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[FakePing] ERROR saving data: {ex}");
+            Console.WriteLine($"[FakePing] {Text("error_saving_data", ex)}");
         }
     }
 

@@ -1,0 +1,21 @@
+{
+  "player_not_found": "Player not found.",
+  "invalid_interval": "Interval must be at least 1 second.",
+  "invalid_range": "Invalid range. Use min-max (for example, 10-50).",
+  "dynamic_enabled": "Dynamic fake ping enabled for {0}: range {1}-{2} ms, change every {3} seconds.",
+  "invalid_ping": "Ping must be between 0 and 4095.",
+  "static_enabled": "Static fake ping set to {0} ms for {1}.",
+  "permanent_entry": "This player has a permanent entry in FakePingConfig.json. Remove the SteamID from that file first.",
+  "removed": "Fake ping removed for {0}.",
+  "set_command_description": "Set a fixed or dynamic fake ping for a player.",
+  "remove_command_description": "Remove a player's fake ping.",
+  "loaded": "Loaded. Config entries: {0}, saved entries: {1}.",
+  "created_config": "Created config: {0}",
+  "loaded_config": "Loaded {0} permanent config entries.",
+  "error_loading_config": "Error loading config: {0}",
+  "error_saving_config": "Error saving config: {0}",
+  "created_data": "Created data file: {0}",
+  "loaded_data": "Loaded {0} saved entries.",
+  "error_loading_data": "Error loading data: {0}",
+  "error_saving_data": "Error saving data: {0}"
+}

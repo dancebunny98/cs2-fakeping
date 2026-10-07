@@ -1,96 +1,29 @@
-# FakePing Plugin for CS2 (CounterStrikeSharp)
+# FakePing for CS2
 
-**Версия:** 2.0.0  
-**Автор:** Ваше имя  
-**Лицензия:** MIT  
+FakePing changes the ping shown for a player in the CS2 scoreboard. Administrators can assign a fixed ping or a random value within a configured range. Assignments persist across reconnects.
 
-Плагин позволяет администраторам подменять пинг любого игрока в таблице счёта CS2. Поддерживает **статический** и **динамический** режимы: пинг может быть фиксированным или автоматически меняться в заданном диапазоне через указанный интервал.
+## Requirements and installation
 
----
+Requires CounterStrikeSharp API 1.0.376 and .NET 10. Build `src/FakePing.csproj` in Release mode. Copy `FakePing.dll` and the `lang` directory from `src/bin/Release/net10.0/` to `addons/counterstrikesharp/plugins/FakePing/`. Reload the plugin or restart the server.
 
-## 📂 Структура проекта
-```
-FakePing/
-├── .github/workflows/
-│   └── build.yml                 # GitHub Actions workflow
-├── src/
-│   ├── FakePing.cs               # Исходный код плагина
-│   └── FakePing.csproj           # Файл проекта (TargetFramework net8.0)
-├── FakePing.sln                  # Решение Visual Studio
-├── .gitignore
-└── README.md
-```
----
+## Commands
 
-## 🚀 Возможности
+Commands require `@css/root`.
 
-- Установка фиксированного (статического) пинга для игрока.
-- Автоматическая смена пинга в случайном диапазоне (динамический режим) с настраиваемым интервалом.
-- Пинг отображается в таблице счёта (`Tab`) и в `net_graph`.
-- Обновление происходит каждый игровой тик – пинг не сбрасывается игрой.
-- Очистка данных при отключении игрока.
-- Только для администраторов с флагом `@css/root` (можно изменить).
+| Command | Effect |
+| --- | --- |
+| `css_fakeping <player> <ping>` | Set a fixed ping from 0 to 4095. |
+| `css_fakeping <player> <min-max> <interval>` | Change ping within the range every `interval` seconds. |
+| `css_fakeping_remove <player>` | Remove a temporary or saved assignment. |
 
----
+Player lookup accepts a `#UserID`, full name, or name fragment. A permanent entry in `FakePingConfig.json` must be removed from that file before `css_fakeping_remove` can remove it.
 
-## 📥 Установка
+## Configuration and translations
 
-1. Скачайте собранный файл `FakePing.dll` из артефактов GitHub Actions (или из релизов).
-2. Поместите его в папку сервера:  
-   `addons/counterstrikesharp/plugins/FakePing/FakePing.dll`
-3. Перезагрузите сервер или выполните команду в консоли:  
-   `css_plugins reload FakePing`
+On first load the plugin creates `configs/plugins/FakePing/FakePingLocalization.json` with `{"Language":"ru"}`. Set `Language` to `ru` or `en` and reload the plugin. An unsupported value selects Russian. Edit `lang/ru.json` or `lang/en.json` to customize command messages. The selected file falls back to English when missing.
 
----
+`FakePingConfig.json` holds permanent assignments. `FakePingData.json` holds saved command assignments. Translation settings use a separate file so the existing data formats stay compatible.
 
-## ⌨️ Команды
+## Implementation notes
 
-Все команды доступны только администраторам с правом `@css/root`.
-
-### 1. Статический режим
-Устанавливает фиксированный пинг для игрока.  
-**Синтаксис:**  
-`!fakeping <игрок> <пинг>`  
-**Пример:**  
-`!fakeping Dancebunny98 150` → пинг игрока Dancebunny98 станет 150 мс.
-
-### 2. Динамический режим
-Пинг будет автоматически меняться в случайном порядке в заданном диапазоне через указанный интервал (в секундах).  
-**Синтаксис:**  
-`!fakeping <игрок> <мин-макс> <интервал>`  
-**Пример:**  
-`!fakeping Dancebunny98 10-50 10` → пинг будет меняться от 10 до 50 мс каждые 10 секунд.
-
-### 3. Удаление фейк-пинга
-Убирает фейковый пинг у игрока.  
-**Синтаксис:**  
-`!fakeping_remove <игрок>`  
-**Пример:**  
-`!fakeping_remove Dancebunny98`
-
----
-
-## 🧩 Поиск игроков
-
-В качестве `<игрок>` можно указать:
-
-- **UserID** (с префиксом `#`): `#123`
-- **Точное имя** (регистр не важен): `Dancebunny98`
-- **Часть имени** (первое совпадение): `Dance`
-
----
-
-## ⚙️ Настройка прав доступа
-
-По умолчанию используется флаг `@css/root`. Чтобы изменить его, отредактируйте атрибут `[RequiresPermissions("@css/root")]` в коде на нужный флаг (например, `@css/slay`).
-
----
-
-## 🛠 Сборка из исходников
-
-1. Установите [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) (или .NET 10, если используете новую версию API).
-2. Клонируйте репозиторий.
-3. Выполните в корне проекта:
-   ```bash
-   dotnet restore
-   dotnet build -c Release
+The plugin restores configured or saved assignments when a player connects. Dynamic entries track their next update time and select a value within the configured range. On each tick the current value is applied to the player resource so the scoreboard reflects it. Data is saved after command changes and when the plugin unloads.

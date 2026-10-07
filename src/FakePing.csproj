@@ -6,6 +6,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="CounterStrikeSharp.API" Version="1.0.372" />
+    <PackageReference Include="CounterStrikeSharp.API" Version="1.0.376" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\lang\*.json" Link="lang\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\README.md" Link="README.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
